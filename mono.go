@@ -7,18 +7,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// MonoTime is a monotonic timestamp, measured as nanoseconds since some
+// Time is a monotonic timestamp, measured as nanoseconds since some
 // arbitrary time chosen by the system at boot.
-type MonoTime int64
+type Time int64
 
 // Add returns the monotonic time t+d.
-func (t MonoTime) Add(d time.Duration) MonoTime {
-	return t + MonoTime(d)
+func (t Time) Add(d time.Duration) Time {
+	return t + Time(d)
 }
 
 // Sub returns the monotonic duration t-u. To compute t-d for a duration d,
 // use t.Add(-d).
-func (t MonoTime) Sub(tt MonoTime) time.Duration {
+func (t Time) Sub(tt Time) time.Duration {
 	return time.Duration(t - tt)
 }
 
@@ -30,7 +30,7 @@ func (t MonoTime) Sub(tt MonoTime) time.Duration {
 // does not operate on the presentation form of the time. Thus, Round(Hour)
 // may return a time with a non-zero minute, depending on the zero time of
 // your system.
-func (t MonoTime) Round(d time.Duration) MonoTime {
+func (t Time) Round(d time.Duration) Time {
 	if d <= 0 {
 		return t
 	}
@@ -49,7 +49,7 @@ func (t MonoTime) Round(d time.Duration) MonoTime {
 // it does not operate on the presentation form of the time. Thus,
 // Truncate(Hour) may return a time with a non-zero minute, depending on the
 // zero time of your system.
-func (t MonoTime) Truncate(d time.Duration) MonoTime {
+func (t Time) Truncate(d time.Duration) Time {
 	if d <= 0 {
 		return t
 	}
@@ -59,12 +59,12 @@ func (t MonoTime) Truncate(d time.Duration) MonoTime {
 // Now gets the current monotonic time
 //
 // Monotonic time is *not comparable* accross sytems, or even reboots.
-func Now() MonoTime {
+func Now() Time {
 	spec := new(unix.Timespec)
 	err := unix.ClockGettime(unix.CLOCK_MONOTONIC, spec)
 	if err != nil {
 		err = fmt.Errorf("Error getting monotime from the kernel: %w", err)
 		panic(err)
 	}
-	return MonoTime(spec.Nano())
+	return Time(spec.Nano())
 }
