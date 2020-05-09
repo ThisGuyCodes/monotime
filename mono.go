@@ -1,11 +1,9 @@
 package monotime
 
 import (
-	"fmt"
-	"os"
-	"sync"
 	"time"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // MonoTime is a monotonic timestamp, measured as nanoseconds since some
@@ -57,56 +55,11 @@ func (t MonoTime) Truncate(d time.Duration) MonoTime {
 	return t.Add(-(time.Duration(t) % d))
 }
 
-// Ticker mimics time.Ticker, but uses a monotonic kernel timer.
-type Ticker struct {
-	C        <-chan struct{}
-	stopOnce sync.Once
-	stopped  bool
-	fd       os.File
-	m        sync.Mutex
+// Now gets the current monotonic time
+//
+// Monotonic time is *not comparable* accross sytems, or even reboots.
+func Now() MonoTime {
+	spec := new(unix.Timespec)
+	_ = unix.ClockGettime(unix.CLOCK_MONOTONIC, spec)
+	return MonoTime(spec.Nano())
 }
-
-// Stop turns off a ticker. After Stop, no more ticks will be sent. Stop does
-// not close the Channel, to prevent a concurrent goroutine reading from the
-// channel from seeing an erroneous "tick".
-func (t *Ticker) Stop() {
-	t.stopOnce.Do(func() {
-		t.fd.Close()
-	})
-}
-
-func (t *Ticker) start() {
-	expirations := make([]byte, 8)
-	ch := make(chan struct{})
-	t.C = ch
-	go func() {
-		t.m.Lock()
-		defer t.m.Unlock()
-		for {
-			_, err := t.fd.Read(expirations)
-			if err == os.ErrClosed {
-				break
-			} else if err != nil {
-				err = fmt.Errorf("Unknown error reading from timerfd: %w", err)
-				panic(err)
-			}
-			// actively want to depend on host byte order.
-			occurances := *(*uint64)(unsafe.Pointer(&expirations[0]))
-			var i uint64
-			for i = 0; i < occurances; i++ {
-				ch <- struct{}{}
-			}
-		}
-	}()
-}
-
-func (t *Ticker) Reset(d time.Duration) bool {
-	return t.ResetAt(-1, d)
-}
-func (t *Ticker) ResetAt(tt MonoTime, d time.Duration) bool
-
-func NewTicker(d time.Duration) *Ticker {
-	return NewTickerAt(-1, d)
-}
-
-func NewTickerAt(t MonoTime, d time.Duration) *Ticker
