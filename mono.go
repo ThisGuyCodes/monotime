@@ -1,6 +1,7 @@
 package monotime
 
 import (
+	"fmt"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -60,6 +61,10 @@ func (t MonoTime) Truncate(d time.Duration) MonoTime {
 // Monotonic time is *not comparable* accross sytems, or even reboots.
 func Now() MonoTime {
 	spec := new(unix.Timespec)
-	_ = unix.ClockGettime(unix.CLOCK_MONOTONIC, spec)
+	err := unix.ClockGettime(unix.CLOCK_MONOTONIC, spec)
+	if err != nil {
+		err = fmt.Errorf("Error getting monotime from the kernel: %w", err)
+		panic(err)
+	}
 	return MonoTime(spec.Nano())
 }
