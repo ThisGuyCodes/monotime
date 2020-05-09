@@ -4,41 +4,23 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 	"unsafe"
 )
-
-// MonoDuration is a monotonic interval of time in nanoseconds.
-type MonoDuration int64
-
-// Round returns the result of rounding d to the nearest multiple of m. The
-// rounding behavior for halfway values is to round way from zero.
-func (d MonoDuration) Round(m MonoDuration) MonoDuration {
-	// Since they're actually the same type we get to cheat.
-	// I think the compiler makes these conversions free?
-	return MonoDuration(MonoTime(d).Round(m))
-}
-
-// Truncate returns the result of rounding d toward zero to a multiple of m.
-// if m <= 0, Truncate returns d unchanged.
-func (d MonoDuration) Truncate(m MonoDuration) MonoDuration {
-	// Since they're actually the same type we get to cheat.
-	// I think the compiler makes these conversions free?
-	return MonoDuration(MonoTime(d).Truncate(m))
-}
 
 // MonoTime is a monotonic timestamp, measured as nanoseconds since some
 // arbitrary time chosen by the system at boot.
 type MonoTime int64
 
 // Add returns the monotonic time t+d.
-func (t MonoTime) Add(d MonoDuration) MonoTime {
+func (t MonoTime) Add(d time.Duration) MonoTime {
 	return t + MonoTime(d)
 }
 
 // Sub returns the monotonic duration t-u. To compute t-d for a duration d,
 // use t.Add(-d).
-func (t MonoTime) Sub(tt MonoTime) MonoDuration {
-	return MonoDuration(t - tt)
+func (t MonoTime) Sub(tt MonoTime) time.Duration {
+	return time.Duration(t - tt)
 }
 
 // Round returns the result of routing t to the nearest multiple of d (since
@@ -49,12 +31,12 @@ func (t MonoTime) Sub(tt MonoTime) MonoDuration {
 // does not operate on the presentation form of the time. Thus, Round(Hour)
 // may return a time with a non-zero minute, depending on the zero time of
 // your system.
-func (t MonoTime) Round(d MonoDuration) MonoTime {
+func (t MonoTime) Round(d time.Duration) MonoTime {
 	if d <= 0 {
 		return t
 	}
 
-	r := MonoDuration(t) % d
+	r := time.Duration(t) % d
 	if r*2 <= d {
 		return t.Add(-r)
 	}
@@ -68,11 +50,11 @@ func (t MonoTime) Round(d MonoDuration) MonoTime {
 // it does not operate on the presentation form of the time. Thus,
 // Truncate(Hour) may return a time with a non-zero minute, depending on the
 // zero time of your system.
-func (t MonoTime) Truncate(d MonoDuration) MonoTime {
+func (t MonoTime) Truncate(d time.Duration) MonoTime {
 	if d <= 0 {
 		return t
 	}
-	return t.Add(-(MonoDuration(t) % d))
+	return t.Add(-(time.Duration(t) % d))
 }
 
 // Ticker mimics time.Ticker, but uses a monotonic kernel timer.
@@ -81,6 +63,7 @@ type Ticker struct {
 	stopOnce sync.Once
 	stopped  bool
 	fd       os.File
+	m        sync.Mutex
 }
 
 // Stop turns off a ticker. After Stop, no more ticks will be sent. Stop does
@@ -97,10 +80,12 @@ func (t *Ticker) start() {
 	ch := make(chan struct{})
 	t.C = ch
 	go func() {
+		t.m.Lock()
+		defer t.m.Unlock()
 		for {
 			_, err := t.fd.Read(expirations)
 			if err == os.ErrClosed {
-				return
+				break
 			} else if err != nil {
 				err = fmt.Errorf("Unknown error reading from timerfd: %w", err)
 				panic(err)
@@ -115,13 +100,13 @@ func (t *Ticker) start() {
 	}()
 }
 
-func (t *Ticker) Reset(d MonoDuration) bool {
+func (t *Ticker) Reset(d time.Duration) bool {
 	return t.ResetAt(-1, d)
 }
-func (t *Ticker) ResetAt(tt MonoTime, d MonoDuration) bool
+func (t *Ticker) ResetAt(tt MonoTime, d time.Duration) bool
 
-func NewTicker(d MonoDuration) *Ticker {
+func NewTicker(d time.Duration) *Ticker {
 	return NewTickerAt(-1, d)
 }
 
-func NewTickerAt(t MonoTime, d MonoDuration) *Ticker
+func NewTickerAt(t MonoTime, d time.Duration) *Ticker
